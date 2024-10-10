@@ -270,7 +270,7 @@ def validate(model, dataloader, device):
 # Load the pre-trained model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 num_classes = len(CLASS_MAPPING)
-model = Mask2FormerForUniversalSegmentation.from_pretrained("facebook/mask2former-swin-large-coco-instance") if use_pretrained else Mask2FormerForUniversalSegmentation.from_config(config=Mask2FormerConfig())
+model = Mask2FormerForUniversalSegmentation.from_pretrained("facebook/mask2former-swin-large-coco-instance") if use_pretrained else Mask2FormerForUniversalSegmentation(config=Mask2FormerConfig())
 model.config.num_labels = num_classes
 model.class_labels_predictor = nn.Linear(model.config.hidden_size, num_classes)
 model.to(device)
