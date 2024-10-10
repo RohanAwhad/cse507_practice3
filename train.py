@@ -148,7 +148,7 @@ class SegmentationDataset(Dataset):
     width: int = example['Width']
 
     if img_path is None:
-      image = Image.new('L', (width, height), color=255)
+      image = Image.new('RGB', (width, height), color=255)
       label = np.zeros((height, width), dtype=np.uint8)
     else:
       rightLungMask = get_mask_from_RLE(example['Right Lung'], height, width)
