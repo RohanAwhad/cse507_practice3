@@ -242,12 +242,11 @@ def train_one_epoch(model, dataloader, optimizer, device):
 
     for images, labels in dataloader:
         images, labels = images.to(device), labels.to(device)
-        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-          outputs = model(pixel_values=images)
-          logits = outputs.masks_queries_logits
-          logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
-          logits = logits.squeeze(1)  # Remove extra dimension (B, 1, H, W) -> (B, H, W)
-          loss = criterion(logits, labels)
+        outputs = model(pixel_values=images)
+        logits = outputs.masks_queries_logits
+        logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
+        logits = logits.squeeze(1)  # Remove extra dimension (B, 1, H, W) -> (B, H, W)
+        loss = criterion(logits, labels)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -263,12 +262,11 @@ def validate(model, dataloader, device):
     with torch.no_grad():
         for images, labels in dataloader:
             images, labels = images.to(device), labels.to(device)
-            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-              outputs = model(pixel_values=images)
-              logits = outputs.masks_queries_logits
-              logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
-              logits = logits.squeeze(1)
-              loss = criterion(logits, labels)
+            outputs = model(pixel_values=images)
+            logits = outputs.masks_queries_logits
+            logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
+            logits = logits.squeeze(1)
+            loss = criterion(logits, labels)
             val_loss += loss.item()
 
     avg_val_loss = val_loss / len(dataloader)
