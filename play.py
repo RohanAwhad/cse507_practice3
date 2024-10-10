@@ -207,7 +207,7 @@ unified_dataset = UnifiedSegmentationDataset(
   datasets=[chestxray14_torch_ds, padchest_torch_ds, chexpert_torch_ds, vindr_cxr_torch_ds]
 )
 
-# plot the first index image and label side by side
+# svae the first index image and label side by side
 import matplotlib.pyplot as plt
 
 def plot_sample(dataset: Dataset, idx: int):
@@ -221,7 +221,7 @@ def plot_sample(dataset: Dataset, idx: int):
   axes[1].set_title('Label')
   axes[1].axis('off')
 
-  plt.show()
-
-# Plot an example from the unified dataset
+  plt.tight_layout()
+  fig.savefig(f'sample_{idx}.png')
+# Plot and save a sample from the unified dataset
 plot_sample(unified_dataset, 0)
