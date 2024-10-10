@@ -3,6 +3,7 @@ import dataclasses
 import json
 import os
 import pandas as pd
+import warnings
 from typing import Callable, Dict, List
 
 parser = argparse.ArgumentParser(description='Training configuration')
@@ -100,7 +101,8 @@ def get_mask_from_RLE(rle, height, width):
 class SegmentationDataset(Dataset):
   def __init__(self, dataset: DS, transform: Optional[Callable] = None):
     self.dataset = dataset
-    self.csv_data = pd.read_csv(dataset.csv_path)
+    self.csv_data = pd.read_csv(dataset.csv_path).sample(10)
+    warnings.warn("Only using 10 random rows from the dataset")
     self.transform = transform
     self.img_names: List[str] = self.csv_data[dataset.col_name].tolist()
     self.classes: Dict[str, int] = {'background': 0, 'right_lung': 1, 'left_lung': 2, 'heart': 3}
@@ -176,19 +178,6 @@ class UnifiedSegmentationDataset(Dataset):
 unified_dataset = UnifiedSegmentationDataset(
   datasets=[chestxray14_torch_ds, padchest_torch_ds, chexpert_torch_ds, vindr_cxr_torch_ds]
 )
-
-# TODO: remove during official training
-# for testing purposes create a subset ds for each of the torch ds with size 10
-from torch.utils.data import DataLoader, random_split
-subset_size = 10
-chestxray_14_subset_dataset = torch.utils.data.Subset(chestxray14_torch_ds, range(subset_size))
-padchest_subset_dataset = torch.utils.data.Subset(padchest_torch_ds, range(subset_size))
-chexpert_subset_dataset = torch.utils.data.Subset(chexpert_torch_ds, range(subset_size))
-vindr_cxr_subset_dataset = torch.utils.data.Subset(vindr_cxr_torch_ds, range(subset_size))
-unified_dataset = UnifiedSegmentationDataset(
-  datasets=[chestxray_14_subset_dataset, padchest_subset_dataset, chexpert_subset_dataset, vindr_cxr_subset_dataset]
-)
-
 
 train_size = int(0.8 * len(dataset))
 val_size = len(dataset) - train_size
