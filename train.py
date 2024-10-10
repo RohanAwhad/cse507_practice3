@@ -88,6 +88,9 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
 
 
+TRAIN_IMAGE_WIDTH = 512
+TRAIN_IMAGE_HEIGHT = 512
+
 def convert_to_rgb(image_path: str) -> Image.Image:
   # Check if file is a DICOM file
   if image_path.endswith('.dicom'):
@@ -117,8 +120,10 @@ def get_mask_from_RLE(rle, height, width):
     return mask
 
 class SegmentationDataset(Dataset):
-  def __init__(self, dataset: DS, transform: Optional[Callable] = None):
+  def __init__(self, dataset: DS, transform: Optional[Callable] = None, img_height: int | None = None, img_width: int | None = None):
     self.dataset = dataset
+    self.image_height = img_height
+    self.image_width = img_width
     #self.csv_data = pd.read_csv(dataset.csv_path)
 
     csv_data: pd.DataFrame = pd.read_csv(dataset.csv_path, nrows=20)
@@ -136,8 +141,8 @@ class SegmentationDataset(Dataset):
     img_path: Optional[str] = self.dataset.get_image_path(img_name)
 
     example = self.csv_data.iloc[idx]
-    height: int = example['Height']
-    width: int = example['Width']
+    height: int = self.image_height or example['Height']
+    width: int = self.image_width or example['Width']
 
     if img_path is None:
       image = Image.new('L', (width, height), color=255)
@@ -161,15 +166,16 @@ class SegmentationDataset(Dataset):
 
 # Define preprocessing transformations
 preprocess = transforms.Compose([
-    transforms.Resize((512, 512)),
+    transforms.Resize((TRAIN_IMAGE_HEIGHT, TRAIN_IMAGE_WIDTH)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Using ImageNet statistics
 ])
+
 # Initialize datasets
-chestxray14_torch_ds = SegmentationDataset(dataset=chestxray14_ds, transform=preprocess)
-padchest_torch_ds = SegmentationDataset(dataset=padchest_ds, transform=preprocess)
-chexpert_torch_ds = SegmentationDataset(dataset=chexpert_ds, transform=preprocess)
-vindr_cxr_torch_ds = SegmentationDataset(dataset=vindr_cxr_ds, transform=preprocess)
+chestxray14_torch_ds = SegmentationDataset(dataset=chestxray14_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH)
+padchest_torch_ds = SegmentationDataset(dataset=padchest_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH)
+chexpert_torch_ds = SegmentationDataset(dataset=chexpert_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH)
+vindr_cxr_torch_ds = SegmentationDataset(dataset=vindr_cxr_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH)
 
 
 class UnifiedSegmentationDataset(Dataset):
