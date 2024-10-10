@@ -38,30 +38,30 @@ class DS:
     col_name: str
     get_image_path: Callable[[str], str]
 
-csv_directory: str = "./tiny_ds/csvs"
+csv_directory: str = "/data/courses/2024/class_ImageSummerFall2024_jliang12/CheXMask/physionet.org/files/chexmask-cxr-segmentation-data/0.4/OriginalResolution"
 chestxray14_ds = DS(
     name="chestxray14",
-    csv_path=os.path.join(csv_directory, "chestx-ray8-tiny-chexmask.csv"),
+    csv_path=os.path.join(csv_directory, "ChestX-Ray8.csv"),
     col_name="Image Index",
     get_image_path=lambda x: chestxray14_index.get(x, None)
 )
 padchest_ds = DS(
     name="padchest",
-    csv_path=os.path.join(csv_directory, "padchest-tiny-chexmask.csv"),
+    csv_path=os.path.join(csv_directory, "Padchest.csv"),
     col_name="ImageID",
     get_image_path=lambda x: padchest_index.get(x, None)
 )
 
 chexpert_ds = DS(
     name="chexpert",
-    csv_path=os.path.join(csv_directory, "chexpert-tiny-chexmask.csv"),
+    csv_path=os.path.join(csv_directory, "CheXpert.csv"),
     col_name="Path",
     get_image_path=lambda x: f"/data/courses/2024/class_ImageSummerFall2024_jliang12/chexpertchestxrays-u20210408/CheXpert-v1.0/{x}"
 )
 
 vindr_cxr_ds = DS(
     name="vindr_cxr",
-    csv_path=os.path.join(csv_directory, "vindr-cxr-tiny-chexmask.csv"),
+    csv_path=os.path.join(csv_directory, "VinDr-CXR.csv"),
     col_name="image_id",
     get_image_path=lambda x: f"/data/courses/2024/class_ImageSummerFall2024_jliang12/vinbigdata/train/{x}.dicom",
 )
