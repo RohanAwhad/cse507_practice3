@@ -141,8 +141,8 @@ class SegmentationDataset(Dataset):
     img_path: Optional[str] = self.dataset.get_image_path(img_name)
 
     example = self.csv_data.iloc[idx]
-    height: int = self.image_height or example['Height']
-    width: int = self.image_width or example['Width']
+    height: int = example['Height']
+    width: int = example['Width']
 
     if img_path is None:
       image = Image.new('L', (width, height), color=255)
@@ -159,7 +159,9 @@ class SegmentationDataset(Dataset):
       label = torch.tensor(label, dtype=torch.long)
 
       image = convert_to_rgb(img_path)
-    if self.transform: image = self.transform(image)
+    if self.transform:
+      image = self.transform(image)
+      label = F.interpolate(label.float().unsqueeze(0).unsqueeze(0), size=(self.image_height, self.image_width), mode='nearest').squeeze(0).squeeze(0).long()
     return image, label
 
 
