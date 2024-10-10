@@ -90,7 +90,7 @@ from torch.utils.data import DataLoader, random_split
 
 def convert_to_rgb(image_path: str) -> Image.Image:
   # Check if file is a DICOM file
-  if image_path.endswith('.dcm'):
+  if image_path.endswith('.dicom'):
     dicom_image: pydicom.dataset.FileDataset = pydicom.dcmread(image_path)
     image_array: np.ndarray = dicom_image.pixel_array
     image: Image.Image = Image.fromarray(image_array)
