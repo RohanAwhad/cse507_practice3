@@ -179,9 +179,9 @@ unified_dataset = UnifiedSegmentationDataset(
   datasets=[chestxray14_torch_ds, padchest_torch_ds, chexpert_torch_ds, vindr_cxr_torch_ds]
 )
 
-train_size = int(0.8 * len(dataset))
-val_size = len(dataset) - train_size
-train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+train_size = int(0.8 * len(unified_dataset))
+val_size = len(unified_dataset) - train_size
+train_dataset, val_dataset = random_split(unified_dataset, [train_size, val_size])
 
 # Create data loaders
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
