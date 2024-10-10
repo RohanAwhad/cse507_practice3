@@ -149,7 +149,7 @@ class SegmentationDataset(Dataset):
 
     if img_path is None:
       image = Image.new('RGB', (width, height), color=255)
-      label = np.zeros((height, width), dtype=np.uint8)
+      label = torch.tensor(np.zeros((height, width), dtype=np.uint8), dtype=torch.long)
     else:
       rightLungMask = get_mask_from_RLE(example['Right Lung'], height, width)
       leftLungMask = get_mask_from_RLE(example['Left Lung'], height, width)
