@@ -82,6 +82,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 from pandas import DataFrame
 from typing import Optional, Callable
+from torchvision import transforms
 
 def get_mask_from_RLE(rle, height, width):
     runs = np.array([int(x) for x in rle.split()])
