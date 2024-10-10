@@ -271,9 +271,12 @@ def validate(model, dataloader, device):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 num_classes = len(CLASS_MAPPING)
 checkpoint_path = 'facebook/mask2former-swin-large-coco-instance'
-model = Mask2FormerForUniversalSegmentation.from_pretrained(checkpoint_path) if use_pretrained else Mask2FormerForUniversalSegmentation(config=Mask2FormerConfig.from_pretrained(checkpoint_path))
-model.config.num_labels = num_classes
-model.class_labels_predictor = nn.Linear(model.config.hidden_size, num_classes)
+if use_pretrained:
+  model = Mask2FormerForUniversalSegmentation.from_pretrained(checkpoint_path, num_labels=num_classes, ignore_mismatched_sizes=True)
+else:
+  config = Mask2FormerConfig.from_pretrained(checkpoint_path)
+  config.num_labels = num_classes
+  model = Mask2FormerForUniversalSegmentation(config)
 model.to(device)
 optimizer = AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
