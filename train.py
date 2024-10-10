@@ -10,10 +10,12 @@ parser = argparse.ArgumentParser(description='Training configuration')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='Learning rate for the optimizer')
 parser.add_argument('--batch_size', type=int, default=8, help='Batch size for training and validation')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of training epochs')
+parser.add_argument('--use_pretrained', action='store_true', help='if set, will be finetuning')
 args = parser.parse_args()
 learning_rate = args.learning_rate
 batch_size = args.batch_size
 num_epochs = args.num_epochs
+use_pretrained = args.use_pretrained
 
 def get_files_with_absolute_paths(root_dir: str, index_name: str) -> dict[str, str]:
     index_path = f'/home/rawhad/CSE507/practice_3/{index_name}_index.json'
@@ -88,8 +90,6 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
 
 
-TRAIN_IMAGE_WIDTH = 512
-TRAIN_IMAGE_HEIGHT = 512
 
 def convert_to_rgb(image_path: str) -> Image.Image:
   # Check if file is a DICOM file
@@ -120,7 +120,7 @@ def get_mask_from_RLE(rle, height, width):
     return mask
 
 class SegmentationDataset(Dataset):
-  def __init__(self, dataset: DS, transform: Optional[Callable] = None, img_height: int | None = None, img_width: int | None = None):
+  def __init__(self, dataset: DS, class_mapping: dict[str, int], transform: Optional[Callable] = None, img_height: int | None = None, img_width: int | None = None):
     self.dataset = dataset
     self.image_height = img_height
     self.image_width = img_width
@@ -131,7 +131,7 @@ class SegmentationDataset(Dataset):
     warnings.warn("Only using 10 random rows from the first 20 rows of the dataset")
     self.transform = transform
     self.img_names: List[str] = self.csv_data[dataset.col_name].tolist()
-    self.classes: Dict[str, int] = {'background': 0, 'right_lung': 1, 'left_lung': 2, 'heart': 3}
+    self.classes = class_mapping
 
   def __len__(self) -> int:
     return len(self.img_names)
@@ -163,6 +163,10 @@ class SegmentationDataset(Dataset):
     return image, label
 
 
+# Dataset Constants
+TRAIN_IMAGE_WIDTH = 512
+TRAIN_IMAGE_HEIGHT = 512
+CLASS_MAPPING = {'background': 0, 'right_lung': 1, 'left_lung': 2, 'heart': 3}
 
 # Define preprocessing transformations
 preprocess = transforms.Compose([
@@ -172,10 +176,10 @@ preprocess = transforms.Compose([
 ])
 
 # Initialize datasets
-chestxray14_torch_ds = SegmentationDataset(dataset=chestxray14_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH)
-padchest_torch_ds = SegmentationDataset(dataset=padchest_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH)
-chexpert_torch_ds = SegmentationDataset(dataset=chexpert_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH)
-vindr_cxr_torch_ds = SegmentationDataset(dataset=vindr_cxr_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH)
+chestxray14_torch_ds = SegmentationDataset(dataset=chestxray14_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH, class_mapping=CLASS_MAPPING)
+padchest_torch_ds = SegmentationDataset(dataset=padchest_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH, class_mapping=CLASS_MAPPING)
+chexpert_torch_ds = SegmentationDataset(dataset=chexpert_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH, class_mapping=CLASS_MAPPING)
+vindr_cxr_torch_ds = SegmentationDataset(dataset=vindr_cxr_ds, transform=preprocess, img_height=TRAIN_IMAGE_HEIGHT, img_width=TRAIN_IMAGE_WIDTH, class_mapping=CLASS_MAPPING)
 
 
 class UnifiedSegmentationDataset(Dataset):
@@ -221,7 +225,7 @@ for images, labels in train_loader:
 # ===
 # Model Training
 # ===
-from transformers import Mask2FormerForUniversalSegmentation
+from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerConfig
 import torch.nn as nn
 from torch.optim import AdamW
 import torch.nn.functional as F
@@ -265,7 +269,10 @@ def validate(model, dataloader, device):
 
 # Load the pre-trained model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = Mask2FormerForUniversalSegmentation.from_pretrained("facebook/mask2former-swin-small-coco-instance")
+num_classes = len(CLASS_MAPPING)
+model = Mask2FormerForUniversalSegmentation.from_pretrained("facebook/mask2former-swin-large-coco-instance") if use_pretrained else Mask2FormerForUniversalSegmentation.from_config(config=Mask2FormerConfig())
+model.config.num_labels = num_classes
+model.class_labels_predictor = nn.Linear(model.config.hidden_size, num_classes)
 model.to(device)
 optimizer = AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
