@@ -3,3 +3,5 @@ tiny_ds
 *.swp
 *.swo
 __pycache__
+*.png
+*.json
