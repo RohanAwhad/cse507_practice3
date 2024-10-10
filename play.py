@@ -163,7 +163,7 @@ class SegmentationDataset(Dataset):
 
     if self.transform:
       image = self.transform(image)
-      label = F.interpolate(label.unsqueeze(0).unsqueeze(0), size=(self.image_height, self.image_width), mode='nearest').squeeze(0).squeeze(0)
+      label = F.interpolate(label.float().unsqueeze(0).unsqueeze(0), size=(self.image_height, self.image_width), mode='nearest').squeeze(0).squeeze(0).long()
     return image, label
 
 
