@@ -126,7 +126,7 @@ class SegmentationDataset(Dataset):
     self.image_height = img_height
     self.image_width = img_width
 
-    self.csv_data = pd.read_csv(dataset.csv_path)
+    self.csv_data = pd.read_parquet(dataset.csv_path)
     #csv_data: pd.DataFrame = pd.read_csv(dataset.csv_path, nrows=20)
     #self.csv_data: pd.DataFrame = csv_data.sample(10)
     #warnings.warn("Only using 10 random rows from the first 20 rows of the dataset")
