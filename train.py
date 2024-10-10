@@ -82,6 +82,7 @@ datasets_dict: Dict[str, DS] = {
 import numpy as np
 import pydicom
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 from PIL import Image
 from pandas import DataFrame
