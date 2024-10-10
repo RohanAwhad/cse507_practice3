@@ -416,3 +416,12 @@ def calculate_metrics(model, dataloader, device):
     print(f"Mean Average Precision (AP@[IoU=0.50:0.95]): {map_result:.4f}")
 
 calculate_metrics(model, val_loader, device)
+
+import time
+ROOT_SAVE_DIR = "/scratch/rawhad/CSE507/practice_3/models"
+model_save_dir = f"segmentation_model_{int(time.time())}_{learning_rate}_{num_epochs}_{use_pretrained}"
+# save the model using huggingface saver
+model_path = os.path.join(ROOT_SAVE_DIR, model_save_dir)
+os.makedirs(model_path, exist_ok=True)
+model.save_pretrained(model_path)
+print(f"Model saved at {model_path}")
