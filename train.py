@@ -107,6 +107,8 @@ def convert_to_rgb(image_path: str) -> Image.Image:
       image = Image.fromarray(image)
     if image.mode == 'L':
       image = image.convert('RGB')
+    elif image.mode == 'RGBA':
+      image = image.convert('RGB')
   return image
 
 def get_mask_from_RLE(rle, height, width):
