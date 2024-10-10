@@ -78,6 +78,7 @@ datasets_dict: Dict[str, DS] = {
 # Dataset Class
 # ===
 import numpy as np
+import pydicom
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
@@ -86,6 +87,22 @@ from typing import Optional, Callable
 from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
 
+
+def convert_to_rgb(image_path: str) -> Image.Image:
+  # Check if file is a DICOM file
+  if image_path.endswith('.dcm'):
+    dicom_image: pydicom.dataset.FileDataset = pydicom.dcmread(image_path)
+    image_array: np.ndarray = dicom_image.pixel_array
+    image: Image.Image = Image.fromarray(image_array)
+    image = image.convert('RGB')
+  else:
+    image: Image.Image = Image.open(image_path)
+    if image.mode == 'I;16':
+      image = (np.array(image) / 256).astype(np.uint8)
+      image = Image.fromarray(image)
+    if image.mode == 'L':
+      image = image.convert('RGB')
+  return image
 
 def get_mask_from_RLE(rle, height, width):
     runs = np.array([int(x) for x in rle.split()])
@@ -136,16 +153,8 @@ class SegmentationDataset(Dataset):
       label[heartMask == 255] = self.classes['heart']
       label = torch.tensor(label, dtype=torch.long)
 
-      image = Image.open(img_path)
-      if image.mode == 'I;16':
-        image = (np.array(image) / 256).astype(np.uint8)
-        image = Image.fromarray(image)
-      if image.mode == 'L':
-        image = image.convert('RGB')
-
-    if self.transform:
-      image = self.transform(image)
-
+      image = convert_to_rgb(img_path)
+    if self.transform: image = self.transform(image)
     return image, label
 
 
