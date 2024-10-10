@@ -140,6 +140,8 @@ class SegmentationDataset(Dataset):
       if image.mode == 'I;16':
         image = (np.array(image) / 256).astype(np.uint8)
         image = Image.fromarray(image)
+      if image.mode == 'L':
+        image = image.convert('RGB')
 
     if self.transform:
       image = self.transform(image)
