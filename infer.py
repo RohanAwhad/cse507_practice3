@@ -35,7 +35,7 @@ def visualize_segmentation(image_path: str, mask):
   plt.title("Predicted Mask")
   plt.imshow(mask, cmap='jet')
   # Save the figure instead of showing it
-  save_path = os.path.splitext(image_path)[0] + '_inference.png'
+  save_path = os.path.splitext(os.path.basename(image_path))[0] + '_inference.png'
   plt.savefig(save_path)
   plt.close()
 
