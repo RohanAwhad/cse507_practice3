@@ -55,18 +55,19 @@ padchest_ds = DS(
     get_image_path=lambda x: padchest_index.get(x, None)
 )
 
+def get_image_path(path: str) -> str | None: return path if os.path.exists(path) else None
 chexpert_ds = DS(
     name="chexpert",
     csv_path=os.path.join(csv_directory, "CheXpert.parquet"),
     col_name="Path",
-    get_image_path=lambda x: f"/data/courses/2024/class_ImageSummerFall2024_jliang12/chexpertchestxrays-u20210408/CheXpert-v1.0/{x}"
+    get_image_path=lambda x: get_image_path(f"/data/courses/2024/class_ImageSummerFall2024_jliang12/chexpertchestxrays-u20210408/CheXpert-v1.0/{x}")
 )
 
 vindr_cxr_ds = DS(
     name="vindr_cxr",
     csv_path=os.path.join(csv_directory, "VinDr-CXR.parquet"),
     col_name="image_id",
-    get_image_path=lambda x: f"/data/courses/2024/class_ImageSummerFall2024_jliang12/vinbigdata/train/{x}.dicom",
+    get_image_path=lambda x: get_image_path(f"/data/courses/2024/class_ImageSummerFall2024_jliang12/vinbigdata/train/{x}.dicom"),
 )
 
 datasets_dict: Dict[str, DS] = {
