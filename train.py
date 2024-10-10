@@ -84,6 +84,8 @@ from PIL import Image
 from pandas import DataFrame
 from typing import Optional, Callable
 from torchvision import transforms
+from torch.utils.data import DataLoader, random_split
+
 
 def get_mask_from_RLE(rle, height, width):
     runs = np.array([int(x) for x in rle.split()])
@@ -96,7 +98,6 @@ def get_mask_from_RLE(rle, height, width):
         mask[start:end] = 255
     mask = mask.reshape((height, width))
     return mask
-
 
 class SegmentationDataset(Dataset):
   def __init__(self, dataset: DS, transform: Optional[Callable] = None):
@@ -114,32 +115,35 @@ class SegmentationDataset(Dataset):
     img_name: str = self.img_names[idx]
     img_path: Optional[str] = self.dataset.get_image_path(img_name)
 
-    if img_path is None:
-      raise FileNotFoundError(f"Image path not found for {img_name}")
-
     example = self.csv_data.iloc[idx]
     height: int = example['Height']
     width: int = example['Width']
 
-    rightLungMask = get_mask_from_RLE(example['Right Lung'], height, width)
-    leftLungMask = get_mask_from_RLE(example['Left Lung'], height, width)
-    heartMask = get_mask_from_RLE(example['Heart'], height, width)
+    if img_path is None:
+      image = Image.new('L', (width, height), color=255)
+      label = np.zeros((height, width), dtype=np.uint8)
+    else:
+      rightLungMask = get_mask_from_RLE(example['Right Lung'], height, width)
+      leftLungMask = get_mask_from_RLE(example['Left Lung'], height, width)
+      heartMask = get_mask_from_RLE(example['Heart'], height, width)
 
-    label = np.zeros((height, width), dtype=np.uint8)
-    label[rightLungMask == 255] = self.classes['right_lung']
-    label[leftLungMask == 255] = self.classes['left_lung']
-    label[heartMask == 255] = self.classes['heart']
-    label = torch.tensor(label, dtype=torch.long)
+      label = np.zeros((height, width), dtype=np.uint8)
+      label[rightLungMask == 255] = self.classes['right_lung']
+      label[leftLungMask == 255] = self.classes['left_lung']
+      label[heartMask == 255] = self.classes['heart']
+      label = torch.tensor(label, dtype=torch.long)
 
-    image = Image.open(img_path)
-    if image.mode == 'I;16':
-      image = (np.array(image) / 256).astype(np.uint8)
-      image = Image.fromarray(image)
+      image = Image.open(img_path)
+      if image.mode == 'I;16':
+        image = (np.array(image) / 256).astype(np.uint8)
+        image = Image.fromarray(image)
 
     if self.transform:
       image = self.transform(image)
 
     return image, label
+
+
 
 # Define preprocessing transformations
 preprocess = transforms.Compose([
