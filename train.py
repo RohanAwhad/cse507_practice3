@@ -102,8 +102,11 @@ def get_mask_from_RLE(rle, height, width):
 class SegmentationDataset(Dataset):
   def __init__(self, dataset: DS, transform: Optional[Callable] = None):
     self.dataset = dataset
-    self.csv_data = pd.read_csv(dataset.csv_path).sample(10)
-    warnings.warn("Only using 10 random rows from the dataset")
+    #self.csv_data = pd.read_csv(dataset.csv_path)
+
+    csv_data: pd.DataFrame = pd.read_csv(dataset.csv_path, nrows=20)
+    self.csv_data: pd.DataFrame = csv_data.sample(10)
+    warnings.warn("Only using 10 random rows from the first 20 rows of the dataset")
     self.transform = transform
     self.img_names: List[str] = self.csv_data[dataset.col_name].tolist()
     self.classes: Dict[str, int] = {'background': 0, 'right_lung': 1, 'left_lung': 2, 'heart': 3}
