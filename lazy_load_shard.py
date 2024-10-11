@@ -147,11 +147,23 @@ class LazyLoadingSegmentationDataset(Dataset):
         return self.num_rows
 
     def __getitem__(self, idx: int) -> tuple:
-        chunk_idx = idx // chunk_size
-        offset = idx % chunk_size
-        
-        # Read a chunk lazily from the parquet file
+        # Calculate the row group index dynamically based on the dataset size
+        num_row_groups = self.data_chunks.num_row_groups
+        rows_per_group = self.data_chunks.metadata.row_group(0).num_rows
+
+        # Get the correct row group and the offset within the row group
+        chunk_idx = idx // rows_per_group
+        offset = idx % rows_per_group
+
+        if chunk_idx >= num_row_groups:
+            raise IndexError(f"Row group index {chunk_idx} is out of bounds for file with {num_row_groups} row groups")
+
+        # Read a specific row group lazily from the Parquet file
         df_chunk = self.data_chunks.read_row_group(chunk_idx, columns=[self.dataset.col_name, 'Height', 'Width', 'Right Lung', 'Left Lung', 'Heart']).to_pandas()
+
+        # Ensure the offset is within the bounds of the row group
+        if offset >= len(df_chunk):
+            raise IndexError(f"Offset {offset} is out of bounds within the row group")
 
         example = df_chunk.iloc[offset]
         img_name = example[self.dataset.col_name]
