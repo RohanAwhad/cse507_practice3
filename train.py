@@ -243,8 +243,7 @@ torch.set_float32_matmul_precision('high')
 def train_one_epoch(model, dataloader, optimizer, device):
     model.train()
     running_loss = 0.0
-
-    for images, labels in dataloader:
+    for images, labels in tqdm(dataloader, total=len(dataloader), desc='Training'):
         images, labels = images.to(device), labels.to(device)
         outputs = model(pixel_values=images)
         logits = outputs.masks_queries_logits
@@ -264,7 +263,7 @@ def validate(model, dataloader, device):
     val_loss = 0.0
 
     with torch.no_grad():
-        for images, labels in dataloader:
+        for images, labels in tqdm(dataloader, total=len(dataloader), desc='Evaluation'):
             images, labels = images.to(device), labels.to(device)
             outputs = model(pixel_values=images)
             logits = outputs.masks_queries_logits
