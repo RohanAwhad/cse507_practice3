@@ -330,7 +330,7 @@ def calculate_metrics(model, dataloader, device):
     image_sizes = []  # Store original image sizes
 
     with torch.no_grad():
-        for images, labels in dataloader:
+        for images, labels in tqdm(dataloader, total=len(dataloader), desc='Evaluating'):
             images = images.to(device)
             labels = labels.cpu().numpy()  # Keep labels on CPU for metrics
 
@@ -339,8 +339,8 @@ def calculate_metrics(model, dataloader, device):
                 original_size = (image.shape[-1], image.shape[-2])  # (width, height)
                 image_sizes.append(original_size)
 
-            # Get model predictions
-            outputs = model(pixel_values=images)
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+              outputs = model(pixel_values=images)
             pred_logits = outputs.masks_queries_logits
 
             # Resize predicted logits to the original size and convert to masks
@@ -392,7 +392,7 @@ def train_one_epoch(model, dataloader, optimizer, device):
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
-        if (i % 1000) == 0:
+        if ((i+1) % 1000) == 0:
           print(f'{i} / {len(dataloader)} steps done')
           print('Evaluating')
           calculate_metrics(model, val_loader, device)
