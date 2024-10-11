@@ -219,8 +219,8 @@ val_size = batch_size * 1000
 train_size = len(unified_dataset) - val_size
 train_dataset, val_dataset = random_split(unified_dataset, [train_size, val_size])
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, prefetch_factor=16)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_memory=True, prefetch_factor=16)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, prefetch_factor=256)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_memory=True, prefetch_factor=256)
 
 # Check a batch of training data
 for images, labels in train_loader:
@@ -380,7 +380,7 @@ os.makedirs(MODEL_PATH, exist_ok=True)
 def train_one_epoch(model, dataloader, optimizer, device):
     model.train()
     running_loss = 0.0
-    for i, (images, labels) in enumerate(dataloader):
+    for i, (images, labels) in tqdm(enumerate(dataloader), total=len(dataloader)):
         images, labels = images.to(device), labels.to(device)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
           outputs = model(pixel_values=images)
@@ -394,10 +394,10 @@ def train_one_epoch(model, dataloader, optimizer, device):
         running_loss += loss.item()
         if ((i+1) % 1000) == 0:
           print(f'{i} / {len(dataloader)} steps done')
-          print('Evaluating')
-          calculate_metrics(model, val_loader, device)
           model.save_pretrained(MODEL_PATH)
           print('Model saved at:', MODEL_PATH)
+          print('Evaluating')
+          calculate_metrics(model, val_loader, device)
 
     avg_loss = running_loss / len(dataloader)
     print(f"Training Loss: {avg_loss}")
@@ -434,7 +434,11 @@ else:
   config = Mask2FormerConfig.from_pretrained(checkpoint_path)
   config.num_labels = num_classes
   model = Mask2FormerForUniversalSegmentation(config)
+
 model.to(device)
+print('Compiling Model ...')
+model = torch.compile(model)
+print('Model Compiled!')
 optimizer = AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
 for epoch in range(num_epochs):
