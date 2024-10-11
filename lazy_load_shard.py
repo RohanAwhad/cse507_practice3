@@ -70,6 +70,49 @@ datasets_dict: Dict[str, DS] = {
     vindr_cxr_ds.name: vindr_cxr_ds,
 }
 
+import numpy as np
+import pydicom
+import torch
+import torch.nn.functional as F
+from torch.utils.data import Dataset
+from PIL import Image
+from pandas import DataFrame
+from typing import Optional, Callable
+from torchvision import transforms
+from torch.utils.data import DataLoader, random_split
+
+
+
+def convert_to_rgb(image_path: str) -> Image.Image:
+  # Check if file is a DICOM file
+  if image_path.endswith('.dicom'):
+    dicom_image: pydicom.dataset.FileDataset = pydicom.dcmread(image_path)
+    image_array: np.ndarray = dicom_image.pixel_array
+    image: Image.Image = Image.fromarray(image_array)
+    image = image.convert('RGB')
+  else:
+    image: Image.Image = Image.open(image_path)
+    if image.mode == 'I;16':
+      image = (np.array(image) / 256).astype(np.uint8)
+      image = Image.fromarray(image)
+    if image.mode == 'L':
+      image = image.convert('RGB')
+    elif image.mode == 'RGBA':
+      image = image.convert('RGB')
+  return image
+
+def get_mask_from_RLE(rle, height, width):
+    runs = np.array([int(x) for x in rle.split()])
+    starts = runs[::2]
+    lengths = runs[1::2]
+    mask = np.zeros((height * width), dtype=np.uint8)
+    for start, length in zip(starts, lengths):
+        start -= 1  
+        end = start + length
+        mask[start:end] = 255
+    mask = mask.reshape((height, width))
+    return mask
+
 import pandas as pd
 import numpy as np
 import os
@@ -151,6 +194,18 @@ def lazy_load_datasets(datasets: List[DS], transform: Optional[Callable] = None,
         )
         torch_datasets.append(ds)
     return torch_datasets
+
+# Dataset Constants
+TRAIN_IMAGE_WIDTH = 512
+TRAIN_IMAGE_HEIGHT = 512
+CLASS_MAPPING = {'background': 0, 'right_lung': 1, 'left_lung': 2, 'heart': 3}
+
+# Define preprocessing transformations
+preprocess = transforms.Compose([
+    transforms.Resize((TRAIN_IMAGE_HEIGHT, TRAIN_IMAGE_WIDTH)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Using ImageNet statistics
+])
 
 # Initialize lazy-loaded datasets
 lazy_datasets = lazy_load_datasets(
