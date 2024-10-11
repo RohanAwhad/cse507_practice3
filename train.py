@@ -215,8 +215,8 @@ unified_dataset = UnifiedSegmentationDataset(
   datasets=[chestxray14_torch_ds, padchest_torch_ds, chexpert_torch_ds, vindr_cxr_torch_ds]
 )
 
-train_size = int(0.8 * len(unified_dataset))
-val_size = len(unified_dataset) - train_size
+val_size = batch_size * 1000
+train_size = len(unified_dataset) - val_size
 train_dataset, val_dataset = random_split(unified_dataset, [train_size, val_size])
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
@@ -226,7 +226,6 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_m
 for images, labels in train_loader:
     print(f"Batch image shape: {images.shape}, Batch label shape: {labels.shape}")
     break
-
 
 
 # ===
@@ -240,20 +239,34 @@ import torch.nn.functional as F
 torch.backends.cudnn.benchmark = True
 torch.set_float32_matmul_precision('high')
 
+import time
+ROOT_SAVE_DIR = "/scratch/rawhad/CSE507/practice_3/models"
+MODEL_SAVE_DIR = f"segmentation_model_{int(time.time())}_{learning_rate}_{num_epochs}_{use_pretrained}"
+MODEL_PATH = os.path.join(ROOT_SAVE_DIR, model_save_dir)
+os.makedirs(MODEL_PATH, exist_ok=True)
+
 def train_one_epoch(model, dataloader, optimizer, device):
     model.train()
     running_loss = 0.0
-    for images, labels in tqdm(dataloader, total=len(dataloader), desc='Training'):
+    for i, (images, labels) in enumerate(dataloader):
         images, labels = images.to(device), labels.to(device)
-        outputs = model(pixel_values=images)
-        logits = outputs.masks_queries_logits
-        logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
-        logits = logits.squeeze(1)  # Remove extra dimension (B, 1, H, W) -> (B, H, W)
-        loss = criterion(logits, labels)
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+          outputs = model(pixel_values=images)
+          logits = outputs.masks_queries_logits
+          logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
+          logits = logits.squeeze(1)  # Remove extra dimension (B, 1, H, W) -> (B, H, W)
+          loss = criterion(logits, labels)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
+        if (i % 1000) == 0:
+          print(f'{i} / {len(dataloader)} steps done')
+          print('Evaluating')
+          calculate_metrics(model, val_loader, device)
+          model.save_pretrained(MODEL_PATH)
+          print('Model saved at:', MODEL_PATH)
+
     avg_loss = running_loss / len(dataloader)
     print(f"Training Loss: {avg_loss}")
     return avg_loss
@@ -263,14 +276,17 @@ def validate(model, dataloader, device):
     val_loss = 0.0
 
     with torch.no_grad():
-        for images, labels in tqdm(dataloader, total=len(dataloader), desc='Evaluation'):
+        for i, (images, labels) in enumerate(dataloader):
             images, labels = images.to(device), labels.to(device)
-            outputs = model(pixel_values=images)
-            logits = outputs.masks_queries_logits
-            logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
-            logits = logits.squeeze(1)
-            loss = criterion(logits, labels)
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+              outputs = model(pixel_values=images)
+              logits = outputs.masks_queries_logits
+              logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
+              logits = logits.squeeze(1)
+              loss = criterion(logits, labels)
             val_loss += loss.item()
+            if (i % 1000) == 0:
+              print(f'{i} / {len(dataloader)} validation steps done')
 
     avg_val_loss = val_loss / len(dataloader)
     print(f"Validation Loss: {avg_val_loss}")
@@ -428,11 +444,5 @@ def calculate_metrics(model, dataloader, device):
 
 calculate_metrics(model, val_loader, device)
 
-import time
-ROOT_SAVE_DIR = "/scratch/rawhad/CSE507/practice_3/models"
-model_save_dir = f"segmentation_model_{int(time.time())}_{learning_rate}_{num_epochs}_{use_pretrained}"
-# save the model using huggingface saver
-model_path = os.path.join(ROOT_SAVE_DIR, model_save_dir)
-os.makedirs(model_path, exist_ok=True)
-model.save_pretrained(model_path)
-print(f"Model saved at {model_path}")
+model.save_pretrained(MODEL_PATH)
+print(f"Model saved at {MODEL_PATH}")
