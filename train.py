@@ -227,89 +227,6 @@ for images, labels in train_loader:
     print(f"Batch image shape: {images.shape}, Batch label shape: {labels.shape}")
     break
 
-
-# ===
-# Model Training
-# ===
-from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerConfig
-import torch.nn as nn
-from torch.optim import AdamW
-import torch.nn.functional as F
-
-torch.backends.cudnn.benchmark = True
-torch.set_float32_matmul_precision('high')
-
-import time
-ROOT_SAVE_DIR = "/scratch/rawhad/CSE507/practice_3/models"
-MODEL_SAVE_DIR = f"segmentation_model_{int(time.time())}_{learning_rate}_{num_epochs}_{use_pretrained}"
-MODEL_PATH = os.path.join(ROOT_SAVE_DIR, model_save_dir)
-os.makedirs(MODEL_PATH, exist_ok=True)
-
-def train_one_epoch(model, dataloader, optimizer, device):
-    model.train()
-    running_loss = 0.0
-    for i, (images, labels) in enumerate(dataloader):
-        images, labels = images.to(device), labels.to(device)
-        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-          outputs = model(pixel_values=images)
-          logits = outputs.masks_queries_logits
-          logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
-          logits = logits.squeeze(1)  # Remove extra dimension (B, 1, H, W) -> (B, H, W)
-          loss = criterion(logits, labels)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item()
-        if (i % 1000) == 0:
-          print(f'{i} / {len(dataloader)} steps done')
-          print('Evaluating')
-          calculate_metrics(model, val_loader, device)
-          model.save_pretrained(MODEL_PATH)
-          print('Model saved at:', MODEL_PATH)
-
-    avg_loss = running_loss / len(dataloader)
-    print(f"Training Loss: {avg_loss}")
-    return avg_loss
-
-def validate(model, dataloader, device):
-    model.eval()
-    val_loss = 0.0
-
-    with torch.no_grad():
-        for i, (images, labels) in enumerate(dataloader):
-            images, labels = images.to(device), labels.to(device)
-            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-              outputs = model(pixel_values=images)
-              logits = outputs.masks_queries_logits
-              logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
-              logits = logits.squeeze(1)
-              loss = criterion(logits, labels)
-            val_loss += loss.item()
-            if (i % 1000) == 0:
-              print(f'{i} / {len(dataloader)} validation steps done')
-
-    avg_val_loss = val_loss / len(dataloader)
-    print(f"Validation Loss: {avg_val_loss}")
-    return avg_val_loss
-
-# Load the pre-trained model
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-num_classes = len(CLASS_MAPPING)
-checkpoint_path = 'facebook/mask2former-swin-large-coco-instance'
-if use_pretrained:
-  model = Mask2FormerForUniversalSegmentation.from_pretrained(checkpoint_path, num_labels=num_classes, ignore_mismatched_sizes=True)
-else:
-  config = Mask2FormerConfig.from_pretrained(checkpoint_path)
-  config.num_labels = num_classes
-  model = Mask2FormerForUniversalSegmentation(config)
-model.to(device)
-optimizer = AdamW(model.parameters(), lr=learning_rate)
-criterion = nn.CrossEntropyLoss()
-for epoch in range(num_epochs):
-  print(f"Epoch {epoch+1}/{num_epochs}")
-  train_loss = train_one_epoch(model, train_loader, optimizer, device)
-  val_loss = validate(model, val_loader, device)
-
 # ===
 # Eval
 # ===
@@ -441,6 +358,89 @@ def calculate_metrics(model, dataloader, device):
     # Calculate mAP using pycocotools (on the entire dataset)
     map_result = calculate_coco_map(all_true_masks, all_pred_masks, image_sizes)
     print(f"Mean Average Precision (AP@[IoU=0.50:0.95]): {map_result:.4f}")
+
+
+# ===
+# Model Training
+# ===
+from transformers import Mask2FormerForUniversalSegmentation, Mask2FormerConfig
+import torch.nn as nn
+from torch.optim import AdamW
+import torch.nn.functional as F
+
+torch.backends.cudnn.benchmark = True
+torch.set_float32_matmul_precision('high')
+
+import time
+ROOT_SAVE_DIR = "/scratch/rawhad/CSE507/practice_3/models"
+MODEL_SAVE_DIR = f"segmentation_model_{int(time.time())}_{learning_rate}_{num_epochs}_{use_pretrained}"
+MODEL_PATH = os.path.join(ROOT_SAVE_DIR, MODEL_SAVE_DIR)
+os.makedirs(MODEL_PATH, exist_ok=True)
+
+def train_one_epoch(model, dataloader, optimizer, device):
+    model.train()
+    running_loss = 0.0
+    for i, (images, labels) in enumerate(dataloader):
+        images, labels = images.to(device), labels.to(device)
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+          outputs = model(pixel_values=images)
+          logits = outputs.masks_queries_logits
+          logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
+          logits = logits.squeeze(1)  # Remove extra dimension (B, 1, H, W) -> (B, H, W)
+          loss = criterion(logits, labels)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
+        if (i % 1000) == 0:
+          print(f'{i} / {len(dataloader)} steps done')
+          print('Evaluating')
+          calculate_metrics(model, val_loader, device)
+          model.save_pretrained(MODEL_PATH)
+          print('Model saved at:', MODEL_PATH)
+
+    avg_loss = running_loss / len(dataloader)
+    print(f"Training Loss: {avg_loss}")
+    return avg_loss
+
+def validate(model, dataloader, device):
+    model.eval()
+    val_loss = 0.0
+
+    with torch.no_grad():
+        for i, (images, labels) in enumerate(dataloader):
+            images, labels = images.to(device), labels.to(device)
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+              outputs = model(pixel_values=images)
+              logits = outputs.masks_queries_logits
+              logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
+              logits = logits.squeeze(1)
+              loss = criterion(logits, labels)
+            val_loss += loss.item()
+            if (i % 1000) == 0:
+              print(f'{i} / {len(dataloader)} validation steps done')
+
+    avg_val_loss = val_loss / len(dataloader)
+    print(f"Validation Loss: {avg_val_loss}")
+    return avg_val_loss
+
+# Load the pre-trained model
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+num_classes = len(CLASS_MAPPING)
+checkpoint_path = 'facebook/mask2former-swin-large-coco-instance'
+if use_pretrained:
+  model = Mask2FormerForUniversalSegmentation.from_pretrained(checkpoint_path, num_labels=num_classes, ignore_mismatched_sizes=True)
+else:
+  config = Mask2FormerConfig.from_pretrained(checkpoint_path)
+  config.num_labels = num_classes
+  model = Mask2FormerForUniversalSegmentation(config)
+model.to(device)
+optimizer = AdamW(model.parameters(), lr=learning_rate)
+criterion = nn.CrossEntropyLoss()
+for epoch in range(num_epochs):
+  print(f"Epoch {epoch+1}/{num_epochs}")
+  train_loss = train_one_epoch(model, train_loader, optimizer, device)
+  val_loss = validate(model, val_loader, device)
 
 calculate_metrics(model, val_loader, device)
 
