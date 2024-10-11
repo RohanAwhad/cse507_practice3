@@ -9,7 +9,7 @@ from typing import Callable, Dict, List
 
 import logger
 
-batch_size = 1000
+batch_size = 8
 
 def get_files_with_absolute_paths(root_dir: str, index_name: str) -> dict[str, str]:
     index_path = f'/home/rawhad/CSE507/practice_3/{index_name}_index.json'
@@ -216,11 +216,21 @@ for images, labels in unified_loader:
 shard_dir = '/scratch/rawhad/CSE507/practice_3/shards'
 os.makedirs(shard_dir, exist_ok=True)
 shard_count = 0
-for images, labels in tqdm(unified_loader, desc="Saving shards"):
+curr_shard = []
+for images, labels in tqdm(unified_loader, total=len(unified_loader), desc="Saving shards"):
   labels = labels.unsqueeze(1)  # (B, 1, H, W)
   stacked = torch.cat((images, labels.float()), dim=1)  # (B, 4, H, W)
   np_stacked = stacked.numpy()
   print(np_stacked.shape)
+  curr_shard.append(np_stacked)
+  if len(curr_shard) > 1000:
+    shard_path = os.path.join(shard_dir, f"shard_{shard_count:04d}.npy")
+    final_shard = np.concatenate(curr_shard, axis=0)
+    np.save(shard_path, final_shard)
+    shard_count += 1
+    curr_shard = []
+
+if len(curr_shard) > 0:
   shard_path = os.path.join(shard_dir, f"shard_{shard_count:04d}.npy")
   np.save(shard_path, np_stacked)
   shard_count += 1
