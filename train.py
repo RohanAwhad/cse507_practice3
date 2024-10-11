@@ -7,6 +7,8 @@ import warnings
 from tqdm import tqdm
 from typing import Callable, Dict, List
 
+import logger
+
 parser = argparse.ArgumentParser(description='Training configuration')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='Learning rate for the optimizer')
 parser.add_argument('--batch_size', type=int, default=8, help='Batch size for training and validation')
@@ -17,6 +19,7 @@ learning_rate = args.learning_rate
 batch_size = args.batch_size
 num_epochs = args.num_epochs
 use_pretrained = args.use_pretrained
+
 
 def get_files_with_absolute_paths(root_dir: str, index_name: str) -> dict[str, str]:
     index_path = f'/home/rawhad/CSE507/practice_3/{index_name}_index.json'
@@ -215,12 +218,12 @@ unified_dataset = UnifiedSegmentationDataset(
   datasets=[chestxray14_torch_ds, padchest_torch_ds, chexpert_torch_ds, vindr_cxr_torch_ds]
 )
 
-val_size = batch_size * 1000
+val_size = batch_size * 500
 train_size = len(unified_dataset) - val_size
 train_dataset, val_dataset = random_split(unified_dataset, [train_size, val_size])
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, prefetch_factor=256)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_memory=True, prefetch_factor=256)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, prefetch_factor=256, drop_last=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_memory=True, prefetch_factor=256, drop_last=True)
 
 # Check a batch of training data
 for images, labels in train_loader:
@@ -358,6 +361,7 @@ def calculate_metrics(model, dataloader, device):
     # Calculate mAP using pycocotools (on the entire dataset)
     map_result = calculate_coco_map(all_true_masks, all_pred_masks, image_sizes)
     print(f"Mean Average Precision (AP@[IoU=0.50:0.95]): {map_result:.4f}")
+    return {"Mean Average Precision (AP@[IoU=0.50:0.95])" : map_result}
 
 
 # ===
@@ -373,11 +377,12 @@ torch.set_float32_matmul_precision('high')
 
 import time
 ROOT_SAVE_DIR = "/scratch/rawhad/CSE507/practice_3/models"
-MODEL_SAVE_DIR = f"segmentation_model_{int(time.time())}_{learning_rate}_{num_epochs}_{use_pretrained}"
+MODEL_SAVE_DIR = f"segmentation_model_{learning_rate}_{num_epochs}_{use_pretrained}_{int(time.time())}"
 MODEL_PATH = os.path.join(ROOT_SAVE_DIR, MODEL_SAVE_DIR)
 os.makedirs(MODEL_PATH, exist_ok=True)
+LOGGER = logger.WandbLogger(project_name='cse507_practice3', run_name=MODEL_SAVE_DIR)
 
-def train_one_epoch(model, dataloader, optimizer, device):
+def train_one_epoch(model, dataloader, optimizer, device, logger, offset: int = 0):
     model.train()
     running_loss = 0.0
     for i, (images, labels) in tqdm(enumerate(dataloader), total=len(dataloader)):
@@ -392,12 +397,14 @@ def train_one_epoch(model, dataloader, optimizer, device):
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
-        if ((i+1) % 1000) == 0:
+        log_data = dict(train_loss=loss.item())
+        if ((i+1) % 500) == 0:
           print(f'{i} / {len(dataloader)} steps done')
           model.save_pretrained(MODEL_PATH)
           print('Model saved at:', MODEL_PATH)
           print('Evaluating')
-          calculate_metrics(model, val_loader, device)
+          log_data.update(calculate_metrics(model, val_loader, device))
+        if logger: logger.log(log_data, step=offset+i)
 
     avg_loss = running_loss / len(dataloader)
     print(f"Training Loss: {avg_loss}")
@@ -427,7 +434,7 @@ def validate(model, dataloader, device):
 # Load the pre-trained model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 num_classes = len(CLASS_MAPPING)
-checkpoint_path = 'facebook/mask2former-swin-large-coco-instance'
+checkpoint_path = 'facebook/mask2former-swin-small-coco-instance'
 if use_pretrained:
   model = Mask2FormerForUniversalSegmentation.from_pretrained(checkpoint_path, num_labels=num_classes, ignore_mismatched_sizes=True)
 else:
@@ -436,14 +443,14 @@ else:
   model = Mask2FormerForUniversalSegmentation(config)
 
 model.to(device)
-print('Compiling Model ...')
-model = torch.compile(model)
-print('Model Compiled!')
+#print('Compiling Model ...')
+#model = torch.compile(model)
+#print('Model Compiled!')
 optimizer = AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
 for epoch in range(num_epochs):
   print(f"Epoch {epoch+1}/{num_epochs}")
-  train_loss = train_one_epoch(model, train_loader, optimizer, device)
+  train_loss = train_one_epoch(model, train_loader, optimizer, device, LOGGER, offset=epoch*len(train_loader))
   val_loss = validate(model, val_loader, device)
 
 calculate_metrics(model, val_loader, device)
