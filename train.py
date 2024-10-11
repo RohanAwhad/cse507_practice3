@@ -219,9 +219,8 @@ train_size = int(0.8 * len(unified_dataset))
 val_size = len(unified_dataset) - train_size
 train_dataset, val_dataset = random_split(unified_dataset, [train_size, val_size])
 
-# Create data loaders
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
 
 # Check a batch of training data
 for images, labels in train_loader:
