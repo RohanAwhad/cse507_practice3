@@ -4,6 +4,7 @@ import json
 import os
 import pandas as pd
 import warnings
+from tqdm import tqdm
 from typing import Callable, Dict, List
 
 parser = argparse.ArgumentParser(description='Training configuration')
