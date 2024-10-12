@@ -53,7 +53,7 @@ class ShardedDataset(torch.utils.data.Dataset):
     shard_idx = index // SHARD_SIZE
     shard = load_shard(self.shard_paths[shard_idx])
     example = shard[index % SHARD_SIZE] 
-    image, label = example[:3], example[3:]
+    image, label = torch.from_numpy(example[:3]).float(), torch.from_numpy(example[3:]).long().squeeze(0)
     return image, label
 
 
@@ -222,7 +222,7 @@ torch.set_float32_matmul_precision('high')
 
 import time
 ROOT_SAVE_DIR = "/scratch/rawhad/CSE507/practice_3/models"
-MODEL_SAVE_DIR = f"segmentation_model_{learning_rate}_{num_epochs}_{use_pretrained}_{int(time.time())}"
+MODEL_SAVE_DIR = f"segmentation_model_{use_pretrained}_{learning_rate}_{num_epochs}_{int(time.time())}"
 MODEL_PATH = os.path.join(ROOT_SAVE_DIR, MODEL_SAVE_DIR)
 os.makedirs(MODEL_PATH, exist_ok=True)
 LOGGER = logger.WandbLogger(project_name='cse507_practice3', run_name=MODEL_SAVE_DIR)
