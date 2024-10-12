@@ -67,8 +67,8 @@ train_sharded_dataset = ShardedDataset(shard_paths=train_shards)
 val_sharded_dataset = ShardedDataset(shard_paths=val_shards)
 
 # Create DataLoaders for sharded datasets
-train_loader = torch.utils.data.DataLoader(train_sharded_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
-val_loader = torch.utils.data.DataLoader(val_sharded_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
+train_loader = torch.utils.data.DataLoader(train_sharded_dataset, batch_size=batch_size, num_workers=1, pin_memory=True, prefetch_factor=16)
+val_loader = torch.utils.data.DataLoader(val_sharded_dataset, batch_size=batch_size, num_workers=1, pin_memory=True, prefetch_factor=2)
 
 # Check a batch of training data from the sharded dataset
 for images, labels in train_loader:
