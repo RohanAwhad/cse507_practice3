@@ -106,16 +106,19 @@ def convert_to_rgb(image_path: str) -> Image.Image:
   return image
 
 def get_mask_from_RLE(rle, height, width):
-    runs = np.array([int(x) for x in rle.split()])
-    starts = runs[::2]
-    lengths = runs[1::2]
-    mask = np.zeros((height * width), dtype=np.uint8)
-    for start, length in zip(starts, lengths):
-        start -= 1  
-        end = start + length
-        mask[start:end] = 255
-    mask = mask.reshape((height, width))
-    return mask
+    try:
+        runs = np.array([int(x) for x in rle.split()])
+        starts = runs[::2]
+        lengths = runs[1::2]
+        mask = np.zeros((height * width), dtype=np.uint8)
+        for start, length in zip(starts, lengths):
+            start -= 1  
+            end = start + length
+            mask[start:end] = 255
+        mask = mask.reshape((height, width))
+        return mask
+    except Exception as e:
+        return np.zeros((height, width), dtype=np.uint8)
 
 class SegmentationDataset(Dataset):
   def __init__(self, dataset: DS, class_mapping: dict[str, int], transform: Optional[Callable] = None, img_height: int | None = None, img_width: int | None = None):
@@ -123,7 +126,9 @@ class SegmentationDataset(Dataset):
     self.image_height = img_height
     self.image_width = img_width
 
+    print(f'Loading parquet for {dataset.name} dataset ...')
     self.csv_data = pd.read_parquet(dataset.csv_path)
+    print(f'Parquet loaded')
     #csv_data: pd.DataFrame = pd.read_csv(dataset.csv_path, nrows=20)
     #self.csv_data: pd.DataFrame = csv_data.sample(10)
     #warnings.warn("Only using 10 random rows from the first 20 rows of the dataset")
@@ -205,7 +210,7 @@ class UnifiedSegmentationDataset(Dataset):
 
 # Initialize unified dataset
 unified_dataset = UnifiedSegmentationDataset(datasets=[chestxray14_torch_ds, padchest_torch_ds, chexpert_torch_ds, vindr_cxr_torch_ds])
-unified_loader = DataLoader(unified_dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2, drop_last=True)
+unified_loader = DataLoader(unified_dataset, batch_size=batch_size, shuffle=True, num_workers=6, pin_memory=True, prefetch_factor=64, drop_last=True)
 
 # Check a batch of training data
 for images, labels in unified_loader:
@@ -221,11 +226,11 @@ for images, labels in tqdm(unified_loader, total=len(unified_loader), desc="Savi
   labels = labels.unsqueeze(1)  # (B, 1, H, W)
   stacked = torch.cat((images, labels.float()), dim=1)  # (B, 4, H, W)
   np_stacked = stacked.numpy()
-  print(np_stacked.shape)
   curr_shard.append(np_stacked)
-  if len(curr_shard) > 1000:
+  if len(curr_shard) > 1024//8:
     shard_path = os.path.join(shard_dir, f"shard_{shard_count:04d}.npy")
     final_shard = np.concatenate(curr_shard, axis=0)
+    print(final_shard.shape)
     np.save(shard_path, final_shard)
     shard_count += 1
     curr_shard = []
