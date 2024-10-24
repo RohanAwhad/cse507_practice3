@@ -89,90 +89,32 @@ def load_dataset(dataset_path: str, shard_size: int) -> Tuple[Dataset, Dataset]:
     return train_dataset, val_dataset
 
 
+# ===
+# Evaluation
+# ===
 
-def prepare_coco_format(pred_masks, true_masks, image_sizes):
+def compute_iou(pred_mask, true_mask):
     """
-    Converts prediction and true masks into COCO-like format for mAP evaluation using pycocotools.
+    Computes the Intersection over Union (IoU) between predicted and true masks.
     """
-    coco_format_preds = []
-    coco_format_gts = []
-    coco_format_imgs = []  # This will hold image metadata
-    ann_id = 1  # Initialize annotation ID
+    intersection = np.logical_and(pred_mask, true_mask).sum()
+    union = np.logical_or(pred_mask, true_mask).sum()
+    
+    if union == 0:
+        return 1.0  # Perfect match if both masks are empty
+    return intersection / union
 
-    for i in range(len(pred_masks)):
-        # Prepare a single image entry (height and width should come from the original image)
-        image_info = {
-            'id': i,
-            'width': image_sizes[i][0],  # Assuming image_sizes is a list of (width, height) tuples
-            'height': image_sizes[i][1]
-        }
-        coco_format_imgs.append(image_info)
 
-        # Calculate area for ground truth (number of non-zero pixels)
-        gt_area = np.sum(true_masks[i] > 0)
-
-        # Prepare a single ground truth entry
-        gt = {
-            'image_id': i,
-            'category_id': 1,  # Assuming single class for simplicity
-            'segmentation': true_masks[i].tolist(),  # Use mask for segmentation (you can further encode it if needed)
-            'iscrowd': 0,
-            'id': ann_id,  # Unique ID for each annotation
-            'area': gt_area  # Area of the ground truth mask
-        }
-        coco_format_gts.append(gt)
-
-        # Calculate area for predicted mask (number of non-zero pixels)
-        pred_area = np.sum(pred_masks[i] > 0)
-
-        # Prepare a single prediction entry
-        pred = {
-            'image_id': i,
-            'category_id': 1,  # Assuming single class for simplicity
-            'segmentation': pred_masks[i].tolist(),  # Use mask for segmentation (you can further encode it if needed)
-            'score': 1.0,  # Assume high confidence for this example
-            'id': ann_id,  # Unique ID for each annotation
-            'area': pred_area  # Area of the predicted mask
-        }
-        coco_format_preds.append(pred)
-
-        ann_id += 1  # Increment annotation ID for the next entry
-
-    # Define the 'categories' field with one class (e.g., "object")
-    categories = [{
-        'id': 1,
-        'name': 'object',
-        'supercategory': 'object'
-    }]
-
-    return coco_format_gts, coco_format_preds, coco_format_imgs, categories
-
-def calculate_coco_map(true_masks, pred_masks, image_sizes):
+def compute_dice(pred_mask, true_mask):
     """
-    Calculate mAP using pycocotools on true and predicted masks in COCO-like format.
+    Computes the Dice Coefficient between predicted and true masks.
     """
-    # Convert to COCO format
-    coco_gt = COCO()  # COCO ground truth object
-    coco_dt = COCO()  # COCO detections object
-
-    # Prepare annotations, image info, and categories
-    gts, preds, imgs, categories = prepare_coco_format(pred_masks, true_masks, image_sizes)
-
-    # Add the 'categories' and 'images' field to both ground truth and prediction datasets
-    coco_gt.dataset = {'annotations': gts, 'images': imgs, 'categories': categories}
-    coco_dt.dataset = {'annotations': preds, 'images': imgs, 'categories': categories}
-
-    coco_gt.createIndex()
-    coco_dt.createIndex()
-
-    # Run COCO evaluation
-    coco_eval = COCOeval(coco_gt, coco_dt, 'segm')  # Specify 'segm' for segmentation
-    coco_eval.evaluate()
-    coco_eval.accumulate()
-    coco_eval.summarize()
-
-    # Return the summary of mAP (AP@[IoU=0.50:0.95])
-    return coco_eval.stats[0]  # stats[0] is the mAP@[IoU=0.50:0.95]
+    intersection = np.logical_and(pred_mask, true_mask).sum()
+    dice = (2. * intersection) / (pred_mask.sum() + true_mask.sum())
+    
+    if (pred_mask.sum() + true_mask.sum()) == 0:
+        return 1.0  # Perfect match if both masks are empty
+    return dice
 
 def evaluate(model: nn.Module, val_loader: DataLoader, device: str, step: int, logger: Logger) -> None:
     model.eval()
@@ -180,6 +122,10 @@ def evaluate(model: nn.Module, val_loader: DataLoader, device: str, step: int, l
     all_true_masks = []
     all_pred_masks = []
     image_sizes = []  # Store original image sizes
+    
+    total_iou = 0.0
+    total_dice = 0.0
+    num_samples = 0
 
     with torch.no_grad():
         for images, labels in tqdm(val_loader, total=len(val_loader), desc='Evaluating'):
@@ -192,25 +138,38 @@ def evaluate(model: nn.Module, val_loader: DataLoader, device: str, step: int, l
                 image_sizes.append(original_size)
 
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-              outputs = model(pixel_values=images)
+                outputs = model(pixel_values=images)
             pred_logits = outputs.masks_queries_logits
 
             # Resize predicted logits to the original size and convert to masks
             pred_masks = F.interpolate(pred_logits, size=labels.shape[-2:], mode='bilinear', align_corners=False)
             pred_masks = pred_masks.argmax(dim=1).cpu().numpy()  # (B, H, W)
 
+            # Loop through each image in the batch and calculate IoU and Dice
+            for pred_mask, true_mask in zip(pred_masks, labels):
+                iou_score = compute_iou(pred_mask, true_mask)
+                dice_score = compute_dice(pred_mask, true_mask)
+
+                total_iou += iou_score
+                total_dice += dice_score
+                num_samples += 1
+
             # Append true labels and predictions for each batch
             all_true_masks.append(labels)
             all_pred_masks.append(pred_masks)
 
-    # Convert lists to numpy arrays for evaluation
-    all_true_masks = np.concatenate(all_true_masks, axis=0)  # (N, H, W)
-    all_pred_masks = np.concatenate(all_pred_masks, axis=0)  # (N, H, W)
+    # Calculate the average IoU and Dice across the entire dataset
+    mean_iou = total_iou / num_samples
+    mean_dice = total_dice / num_samples
 
-    # Calculate mAP using pycocotools (on the entire dataset)
-    map_result = calculate_coco_map(all_true_masks, all_pred_masks, image_sizes)
-    print(f"Mean Average Precision (AP@[IoU=0.50:0.95]): {map_result:.4f}")
-    eval_metrics = {"Mean Average Precision (AP@[IoU=0.50:0.95])" : map_result}
+    print(f"Mean IoU: {mean_iou:.4f}")
+    print(f"Mean Dice Coefficient: {mean_dice:.4f}")
+    
+    # Log the metrics
+    eval_metrics = {
+        "Mean IoU": mean_iou,
+        "Mean Dice Coefficient": mean_dice
+    }
     logger.log(eval_metrics, step)
 
 
