@@ -1,6 +1,7 @@
 import argparse
 import functools
 import glob
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import random
@@ -124,40 +125,40 @@ def evaluate(
     logger: Logger,
     class_mapping: Dict[str, int]
 ) -> None:
-    model.eval()
-    
-    class_iou: np.ndarray = np.zeros(len(class_mapping))
-    class_dice: np.ndarray = np.zeros(len(class_mapping))
-    class_counts: np.ndarray = np.zeros(len(class_mapping))
+  model.eval()
+  
+  class_iou: np.ndarray = np.zeros(len(class_mapping))
+  class_dice: np.ndarray = np.zeros(len(class_mapping))
+  class_counts: np.ndarray = np.zeros(len(class_mapping))
 
-    with torch.no_grad():
-        for images, labels in tqdm(val_loader, total=len(val_loader), desc='Evaluating'):
-            images = images.to(device)
-            labels = labels.cpu().numpy()
+  with torch.no_grad():
+    for images, labels in tqdm(val_loader, total=len(val_loader), desc='Evaluating'):
+      images = images.to(device)
+      labels = labels.cpu().numpy()
 
-            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                outputs = model(pixel_values=images)
-            pred_logits = outputs.masks_queries_logits
-            pred_masks = F.interpolate(pred_logits, size=labels.shape[-2:], mode='bilinear', align_corners=False)
-            pred_masks = pred_masks.argmax(dim=1).cpu().numpy()
+      with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        outputs = model(pixel_values=images)
+      pred_logits = outputs.masks_queries_logits
+      pred_masks = F.interpolate(pred_logits, size=labels.shape[-2:], mode='bilinear', align_corners=False)
+      pred_masks = pred_masks.argmax(dim=1).cpu().numpy()
 
-            for class_label, class_id in class_mapping.items():
-                if class_label == 'background':
-                    continue
+      for class_label, class_id in class_mapping.items():
+        if class_label == 'background':
+          continue
 
-                for pred_mask, true_mask in zip(pred_masks, labels):
-                    pred_class_mask = (pred_mask == class_id)
-                    true_class_mask = (true_mask == class_id)
+        for pred_mask, true_mask in zip(pred_masks, labels):
+          pred_class_mask = (pred_mask == class_id)
+          true_class_mask = (true_mask == class_id)
 
-                    if true_class_mask.sum() == 0 and pred_class_mask.sum() == 0:
-                        continue
+          if true_class_mask.sum() == 0 and pred_class_mask.sum() == 0:
+            continue
 
-                    iou_score: float = compute_iou(pred_class_mask, true_class_mask)
-                    dice_score: float = compute_dice(pred_class_mask, true_class_mask)
+          iou_score: float = compute_iou(pred_class_mask, true_class_mask)
+          dice_score: float = compute_dice(pred_class_mask, true_class_mask)
 
-                    class_iou[class_id] += iou_score
-                    class_dice[class_id] += dice_score
-                    class_counts[class_id] += 1
+          class_iou[class_id] += iou_score
+          class_dice[class_id] += dice_score
+          class_counts[class_id] += 1
 
     mean_iou = {f'{label}': class_iou[idx] / class_counts[idx] if class_counts[idx] > 0 else np.nan for label, idx in class_mapping.items() if label != 'background'}
     mean_dice = {f'{label}': class_dice[idx] / class_counts[idx] if class_counts[idx] > 0 else np.nan for label, idx in class_mapping.items() if label != 'background'}
@@ -167,10 +168,32 @@ def evaluate(
     print({**mean_iou, **mean_dice})
 
     eval_metrics = {
-        'IoU': mean_iou,
-        'Dice': mean_dice,
+      'IoU': mean_iou,
+      'Dice': mean_dice,
     }
     logger.log(eval_metrics, step)
+
+    # Visualize some predictions
+    test_images, test_labels = next(iter(val_loader))
+    test_images = test_images.to(device)
+    with torch.no_grad():
+      outputs = model(pixel_values=test_images)
+    test_pred_logits = outputs.masks_queries_logits
+    test_pred_masks = F.interpolate(test_pred_logits, size=test_labels.shape[-2:], mode='bilinear', align_corners=False)
+    test_pred_masks = test_pred_masks.argmax(dim=1).cpu().numpy()
+
+    fig, axs = plt.subplots(2, 4, figsize=(16, 8))
+    for i in range(4):
+      axs[0, i].imshow(test_images[i].permute(1, 2, 0).cpu().numpy())
+      axs[0, i].axis('off')
+      axs[0, i].set_title('Original Image')
+      
+      axs[1, i].imshow(test_pred_masks[i], cmap='gray')
+      axs[1, i].axis('off')
+      axs[1, i].set_title('Predicted Mask')
+
+    logger.log(dict(test_images=fig), step=step)
+    plt.close()
 
 
 def save_checkpoint(model: nn.Module, ckpt_dir: str, step: int) -> None:
