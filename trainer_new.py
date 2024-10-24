@@ -128,7 +128,7 @@ def load_dataset(dataset_path: str, shard_size: int) -> Tuple[Dataset, Dataset]:
     )[
         :-1
     ]  # drop last shard
-    #random.shuffle(all_shards)
+    random.shuffle(all_shards)
     all_shards = [x[0] for x in all_shards]
     val_shards = all_shards[:1]
     train_shards = all_shards[1:]

@@ -12,8 +12,8 @@ max_lr: 0.0003
 min_lr: 0.00003
 
 # Model Configuration
-model_name: "facebook/mask2former-swin-small-coco-instance"
-pretrained_flag: false
+model_name: "facebook/mask2former-swin-large-coco-instance"
+pretrained_flag: true
 
 # Dataset & DataLoader Configuration
 dataset_path: "/scratch/rawhad/CSE507/practice_3/tiny_ds"
@@ -28,7 +28,7 @@ ckpt_dir: "/scratch/rawhad/CSE507/practice_3/models"
 do_ckpt: true
 
 # Run/Experiment Configuration
-run_name: "scaffold_test_v2.3_full_training_0"
+run_name: "scaffold_test_v2.3_a100_batch_size_search"
 project_name: "cse507_practice3"
 
 # Custom
