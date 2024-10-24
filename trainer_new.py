@@ -1,6 +1,7 @@
 import argparse
 import functools
 import glob
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -98,7 +99,6 @@ class ShardedDataset(Dataset):
 
 
 def build_model(model_name: str, pretrained_flag: bool, num_classes: int, dropout: float = 0.0) -> nn.Module:
-    """Load or initialize a model (placeholder)."""
     if pretrained_flag:
         model = Mask2FormerForUniversalSegmentation.from_pretrained(
             model_name, num_labels=num_classes, ignore_mismatched_sizes=True
@@ -106,7 +106,10 @@ def build_model(model_name: str, pretrained_flag: bool, num_classes: int, dropou
     else:
         config = Mask2FormerConfig.from_pretrained(model_name)
         config.num_labels = num_classes
-        config.dropout = dropout
+
+        # cannot apply dropout because of some bug in HF lib
+        #config.dropout = dropout
+        #config.dropout = 0.1
         model = Mask2FormerForUniversalSegmentation(config)
     return model
 
@@ -125,7 +128,7 @@ def load_dataset(dataset_path: str, shard_size: int) -> Tuple[Dataset, Dataset]:
     )[
         :-1
     ]  # drop last shard
-    random.shuffle(all_shards)
+    #random.shuffle(all_shards)
     all_shards = [x[0] for x in all_shards]
     val_shards = all_shards[:1]
     train_shards = all_shards[1:]
@@ -214,8 +217,6 @@ def evaluate(
         mean_iou["mean"] = np.nanmean(list(mean_iou.values()))
         mean_dice["mean"] = np.nanmean(list(mean_dice.values()))
 
-        print({**mean_iou, **mean_dice})
-
         eval_metrics = {
             "IoU": mean_iou,
             "Dice": mean_dice,
@@ -301,7 +302,6 @@ def main():
                 outputs = model(pixel_values=images)
                 logits = outputs.masks_queries_logits
                 logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
-                logits = logits.squeeze(1)  # Remove extra dimension (B, 1, H, W) -> (B, H, W)
                 losses = criterion(logits, labels, config.get("grad_accumulation_steps", 1))
                 loss = losses["total_loss"]
             loss.backward()
