@@ -27,6 +27,14 @@ from torch.utils.data import DataLoader, Dataset
 torch.backends.cudnn.benchmark = True
 torch.set_float32_matmul_precision("high")
 
+# use torch to get how much GPU ram sys has
+def is_gpu_memory_gte_40_gb() -> bool | None:
+  if torch.cuda.is_available():
+    total_memory = torch.cuda.get_device_properties(0).total_memory
+    total_memory_gb = total_memory / (1024 ** 3)  # Convert bytes to GB
+    print(f"Total GPU Memory: {gpu_memory:0.2f} GB")
+    return total_memory_gb > 40
+
 # === Logger Classes === #
 class Logger(ABC):
     @abstractmethod
@@ -73,7 +81,12 @@ def load_config():
         exit(0)
     config_file = sys.argv[1]
     with open(config_file, "r") as file:
-        return yaml.safe_load(file)
+        config = yaml.safe_load(file)
+
+    if is_gpu_memory_gte_40_gb():
+        config['batch_size'] *= 2
+        config['grad_accumulation_steps'] /= 2
+    return config
 
 
 @functools.lru_cache(maxsize=2)
