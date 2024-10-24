@@ -285,7 +285,6 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     config = load_config()
-    grad_accumulation_steps = config["desired_batch_size"] // config["batch_size"]
     logger = WandbLogger(project_name=config.get("project_name", "default_project"), run_name=config["run_name"])
     model = build_model(
         config["model_name"],
@@ -316,6 +315,7 @@ def main():
     # Main training loop
     step = 0
     batch_gen = next_batch(train_loader)
+    grad_accumulation_steps = config["desired_batch_size"] // config["batch_size"]
     while step < config["num_steps"]:
         step += 1
         if step % config["eval_interval"] == 0:

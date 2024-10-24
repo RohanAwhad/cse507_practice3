@@ -1,0 +1,40 @@
+# Hyperparameters
+desired_batch_size: 16
+batch_size: 8
+num_steps: 20000
+dropout: 0.0
+
+# lr scheduler
+# max steps: ~1epoch | warmup_steps: int(config['max_steps'] * 0.037) based on nanogpt | max_lr 3e-4 | min_lr: 3e-5
+max_steps: 7000
+warmup_steps: 259
+max_lr: 0.0001
+min_lr: 0.00001
+
+# Model Configuration
+model_name: "facebook/mask2former-swin-large-coco-instance"
+pretrained_flag: true
+
+# Dataset & DataLoader Configuration
+dataset_path: "/scratch/rawhad/CSE507/practice_3/tiny_ds"
+num_workers: 1
+prefetch_factor: 16
+shard_size: 1032
+
+# Training and Checkpointing
+eval_interval: 1000
+ckpt_interval: 5000
+ckpt_dir: "/scratch/rawhad/CSE507/practice_3/models"
+do_ckpt: true
+
+# Run/Experiment Configuration
+run_name: "scaffold_test_v2.3_fine_tuning_0"
+project_name: "cse507_practice3"
+
+# Custom
+class_mapping:
+  background: 0
+  right_lung: 1
+  left_lung: 2
+  heart: 3
+
