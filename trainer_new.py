@@ -116,59 +116,59 @@ def compute_dice(pred_mask, true_mask):
         return 1.0  # Perfect match if both masks are empty
     return dice
 
-def evaluate(model: nn.Module, val_loader: DataLoader, device: str, step: int, logger: Logger) -> None:
+def evaluate(
+    model: nn.Module,
+    val_loader: DataLoader,
+    device: str,
+    step: int,
+    logger: Logger,
+    class_mapping: Dict[str, int]
+) -> None:
     model.eval()
-
-    all_true_masks = []
-    all_pred_masks = []
-    image_sizes = []  # Store original image sizes
     
-    total_iou = 0.0
-    total_dice = 0.0
-    num_samples = 0
+    class_iou: np.ndarray = np.zeros(len(class_mapping))
+    class_dice: np.ndarray = np.zeros(len(class_mapping))
+    class_counts: np.ndarray = np.zeros(len(class_mapping))
 
     with torch.no_grad():
         for images, labels in tqdm(val_loader, total=len(val_loader), desc='Evaluating'):
             images = images.to(device)
-            labels = labels.cpu().numpy()  # Keep labels on CPU for metrics
-
-            # Get original image sizes (before preprocessing)
-            for image in images:
-                original_size = (image.shape[-1], image.shape[-2])  # (width, height)
-                image_sizes.append(original_size)
+            labels = labels.cpu().numpy()
 
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
                 outputs = model(pixel_values=images)
             pred_logits = outputs.masks_queries_logits
-
-            # Resize predicted logits to the original size and convert to masks
             pred_masks = F.interpolate(pred_logits, size=labels.shape[-2:], mode='bilinear', align_corners=False)
-            pred_masks = pred_masks.argmax(dim=1).cpu().numpy()  # (B, H, W)
+            pred_masks = pred_masks.argmax(dim=1).cpu().numpy()
 
-            # Loop through each image in the batch and calculate IoU and Dice
-            for pred_mask, true_mask in zip(pred_masks, labels):
-                iou_score = compute_iou(pred_mask, true_mask)
-                dice_score = compute_dice(pred_mask, true_mask)
+            for class_label, class_id in class_mapping.items():
+                if class_label == 'background':
+                    continue
 
-                total_iou += iou_score
-                total_dice += dice_score
-                num_samples += 1
+                for pred_mask, true_mask in zip(pred_masks, labels):
+                    pred_class_mask = (pred_mask == class_id)
+                    true_class_mask = (true_mask == class_id)
 
-            # Append true labels and predictions for each batch
-            all_true_masks.append(labels)
-            all_pred_masks.append(pred_masks)
+                    if true_class_mask.sum() == 0 and pred_class_mask.sum() == 0:
+                        continue
 
-    # Calculate the average IoU and Dice across the entire dataset
-    mean_iou = total_iou / num_samples
-    mean_dice = total_dice / num_samples
+                    iou_score: float = compute_iou(pred_class_mask, true_class_mask)
+                    dice_score: float = compute_dice(pred_class_mask, true_class_mask)
 
-    print(f"Mean IoU: {mean_iou:.4f}")
-    print(f"Mean Dice Coefficient: {mean_dice:.4f}")
-    
-    # Log the metrics
+                    class_iou[class_id] += iou_score
+                    class_dice[class_id] += dice_score
+                    class_counts[class_id] += 1
+
+    mean_iou = {f'{label}_iou': class_iou[idx] / class_counts[idx] if class_counts[idx] > 0 else np.nan for label, idx in class_mapping.items() if label != 'background'}
+    mean_dice = {f'{label}_dice': class_dice[idx] / class_counts[idx] if class_counts[idx] > 0 else np.nan for label, idx in class_mapping.items() if label != 'background'}
+
+    print({**mean_iou, **mean_dice})
+
     eval_metrics = {
-        "Mean IoU": mean_iou,
-        "Mean Dice Coefficient": mean_dice
+        **mean_iou,
+        **mean_dice,
+        "Mean IoU": np.nanmean(list(mean_iou.values())),
+        "Mean Dice Coefficient": np.nanmean(list(mean_dice.values()))
     }
     logger.log(eval_metrics, step)
 
@@ -212,7 +212,7 @@ def main():
             step += 1
             if step % config['eval_interval'] == 0:
                 print(f"Step {step}: Performing evaluation")
-                evaluate(model, val_loader, device, step, logger)
+                evaluate(model, val_loader, device, step, logger, config['class_mapping'])
             if step % config['ckpt_interval'] == 0 and config['do_ckpt']:
                 print(f"Step {step}: Saving checkpoint")
                 save_checkpoint(model, os.path.join(config['ckpt_dir'], config['run_name']), step)
