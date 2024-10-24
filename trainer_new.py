@@ -29,11 +29,12 @@ torch.set_float32_matmul_precision("high")
 
 # use torch to get how much GPU ram sys has
 def is_gpu_memory_gte_40_gb() -> bool | None:
-  if torch.cuda.is_available():
-    total_memory = torch.cuda.get_device_properties(0).total_memory
-    total_memory_gb = total_memory / (1024 ** 3)  # Convert bytes to GB
-    print(f"Total GPU Memory: {total_memory_gb:0.2f} GB")
-    return total_memory_gb > 40
+    if torch.cuda.is_available():
+        total_memory = torch.cuda.get_device_properties(0).total_memory
+        total_memory_gb = total_memory / (1024**3)  # Convert bytes to GB
+        print(f"Total GPU Memory: {total_memory_gb:0.2f} GB")
+        return total_memory_gb > 40
+
 
 # === Logger Classes === #
 class Logger(ABC):
@@ -49,30 +50,32 @@ class WandbLogger(Logger):
     def log(self, data: dict, step: int):
         self.run.log(data, step=step)
 
+
 # ===
 # LR Scheduler
 # ===
 class CosineLRScheduler:
-  def __init__(self, warmup_steps, max_steps, max_lr, min_lr):
-    self.warmup_steps = warmup_steps
-    self.max_steps = max_steps
-    self.max_lr = max_lr
-    self.min_lr = min_lr
+    def __init__(self, warmup_steps, max_steps, max_lr, min_lr):
+        self.warmup_steps = warmup_steps
+        self.max_steps = max_steps
+        self.max_lr = max_lr
+        self.min_lr = min_lr
 
-  def get_lr(self, step):
-    # linear warmup
-    if step < self.warmup_steps:
-      return self.max_lr * (step+1) / self.warmup_steps
+    def get_lr(self, step):
+        # linear warmup
+        if step < self.warmup_steps:
+            return self.max_lr * (step + 1) / self.warmup_steps
 
-    # constant lr
-    if step > self.max_steps:
-      return self.min_lr
+        # constant lr
+        if step > self.max_steps:
+            return self.min_lr
 
-    # cosine annealing
-    decay_ratio = (step - self.warmup_steps) / (self.max_steps - self.warmup_steps)
-    assert 0 <= decay_ratio <= 1
-    coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
-    return self.min_lr + coeff * (self.max_lr - self.min_lr)
+        # cosine annealing
+        decay_ratio = (step - self.warmup_steps) / (self.max_steps - self.warmup_steps)
+        assert 0 <= decay_ratio <= 1
+        coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
+        return self.min_lr + coeff * (self.max_lr - self.min_lr)
+
 
 # === Utility to load YAML configuration === #
 def load_config():
@@ -84,9 +87,11 @@ def load_config():
         config = yaml.safe_load(file)
 
     if is_gpu_memory_gte_40_gb():
-        config['batch_size'] *= 2
-        config['grad_accumulation_steps'] /= 2
-        config['num_steps'] /= 2
+        config["batch_size"] *= 2
+
+    if len(sys.argv) > 2:
+        print("Setting run name:", sys.argv[2])
+        config["run_name"] = sys.argv[2]
     return config
 
 
@@ -122,16 +127,14 @@ def build_model(model_name: str, pretrained_flag: bool, num_classes: int, dropou
         config.num_labels = num_classes
 
         # cannot apply dropout because of some bug in HF lib
-        #config.dropout = dropout
-        #config.dropout = 0.1
+        # config.dropout = dropout
+        # config.dropout = 0.1
         model = Mask2FormerForUniversalSegmentation(config)
     return model
 
 
-def criterion(
-    predictions: torch.Tensor, targets: torch.Tensor, grad_steps: int
-) -> Dict[str, Union[torch.Tensor, float]]:
-    total_loss: torch.Tensor = F.cross_entropy(predictions, targets) / grad_steps
+def criterion(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, Union[torch.Tensor, float]]:
+    total_loss: torch.Tensor = F.cross_entropy(predictions, targets)
     return {"total_loss": total_loss}
 
 
@@ -154,8 +157,6 @@ def load_dataset(dataset_path: str, shard_size: int) -> Tuple[Dataset, Dataset]:
 # ===
 # Evaluation
 # ===
-
-
 def compute_iou(pred_mask, true_mask):
     """
     Computes the Intersection over Union (IoU) between predicted and true masks.
@@ -269,13 +270,29 @@ def save_checkpoint(model: nn.Module, ckpt_dir: str, step: int) -> None:
     print(f"Checkpoint saved at step {step}")
 
 
+def next_batch(loader):
+    iterator = iter(loader)
+    while True:
+        try:
+            images, labels = next(iterator)
+            yield images, labels
+        except StopIteration:
+            iterator = iter(loader)
+
+
 # === Trainer Scaffold === #
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     config = load_config()
+    grad_accumulation_steps = config["desired_batch_size"] // config["batch_size"]
     logger = WandbLogger(project_name=config.get("project_name", "default_project"), run_name=config["run_name"])
-    model = build_model(config["model_name"], config["pretrained_flag"], num_classes=len(config["class_mapping"]), dropout=config['dropout'])
+    model = build_model(
+        config["model_name"],
+        config["pretrained_flag"],
+        num_classes=len(config["class_mapping"]),
+        dropout=config["dropout"],
+    )
     model = model.to(device)
     print("Model has been loaded on device")
     train_dataset, val_dataset = load_dataset(config["dataset_path"], config["shard_size"])
@@ -295,40 +312,44 @@ def main():
     )
     print("DataLoaders created")
     optimizer = torch.optim.AdamW(model.parameters(), lr=config["min_lr"])
-    lr_scheduler = CosineLRScheduler(config['warmup_steps'], config['max_steps'], config['max_lr'], config['min_lr'])
+    lr_scheduler = CosineLRScheduler(config["warmup_steps"], config["max_steps"], config["max_lr"], config["min_lr"])
     # Main training loop
     step = 0
+    batch_gen = next_batch(train_loader)
     while step < config["num_steps"]:
-        for batch in train_loader:
-            step += 1
-            if step % config["eval_interval"] == 0:
-                print(f"Step {step}: Performing evaluation")
-                evaluate(model, val_loader, device, step, logger, config["class_mapping"])
-            if step % config["ckpt_interval"] == 0 and config["do_ckpt"]:
-                print(f"Step {step}: Saving checkpoint")
-                save_checkpoint(model, os.path.join(config["ckpt_dir"], config["run_name"]), step)
-            # train
-            model.train()
-            optimizer.zero_grad()
-            images, labels = batch
+        step += 1
+        if step % config["eval_interval"] == 0:
+            print(f"Step {step}: Performing evaluation")
+            evaluate(model, val_loader, device, step, logger, config["class_mapping"])
+        if step % config["ckpt_interval"] == 0 and config["do_ckpt"]:
+            print(f"Step {step}: Saving checkpoint")
+            save_checkpoint(model, os.path.join(config["ckpt_dir"], config["run_name"]), step)
+        # train
+        model.train()
+        optimizer.zero_grad()
+        step_loss = 0
+        # gradient accumulation
+        for _ in range(grad_accumulation_steps):
+            images, labels = next(batch_gen)
             images, labels = images.to(device), labels.to(device)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 outputs = model(pixel_values=images)
                 logits = outputs.masks_queries_logits
                 logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
-                losses = criterion(logits, labels, config.get("grad_accumulation_steps", 1))
-                loss = losses["total_loss"]
+                losses = criterion(logits, labels)
+                loss = losses["total_loss"] / grad_accumulation_steps
             loss.backward()
+            step_loss += loss.item()
+        lr = lr_scheduler.get_lr(step)
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
+        optimizer.step()
+        log_data = dict(train_loss=step_loss, lr=lr)
+        logger.log(log_data, step)
 
-            lr = lr_scheduler.get_lr(step)
-            for param_group in optimizer.param_groups: param_group['lr'] = lr
-            optimizer.step()
-            log_data = dict(train_loss=loss.item(), lr=lr)
-            logger.log(log_data, step)
-
-            if step >= config["num_steps"]:
-                break
-
+        if step >= config["num_steps"]:
+            break
+    batch_gen.close()
     logger.log({"status": "Training finished"}, step=step)
 
 
