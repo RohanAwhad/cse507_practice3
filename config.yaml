@@ -1,12 +1,12 @@
 # Hyperparameters
 lr: 0.0003
 batch_size: 8
-num_steps: 10
+num_steps: 10000
 grad_accumulation_steps: 4  # Number of steps for gradient accumulation
 
 # Model Configuration
 model_name: "facebook/mask2former-swin-small-coco-instance"
-pretrained_flag: true
+pretrained_flag: false
 
 # Dataset & DataLoader Configuration
 dataset_path: "/scratch/rawhad/CSE507/practice_3/tiny_ds"
@@ -15,13 +15,13 @@ prefetch_factor: 16
 shard_size: 1032
 
 # Training and Checkpointing
-eval_interval: 1
-ckpt_interval: 5
+eval_interval: 500
+ckpt_interval: 1000
 ckpt_dir: "/scratch/rawhad/CSE507/practice_3/models"
 do_ckpt: true
 
 # Run/Experiment Configuration
-run_name: "scaffold_test"
+run_name: "scaffold_test_full_training"
 project_name: "cse507_practice3"
 
 # Custom

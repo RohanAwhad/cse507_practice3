@@ -36,7 +36,7 @@ class WandbLogger(Logger):
     def log(self, data: dict, step: int): self.run.log(data, step=step)
 
 # === Utility to load YAML configuration === #
-def load_config(config_file):
+def load_config():
     if len(sys.argv) < 2:
         print('Please provide a config.yaml path as arg')
         exit(0)
@@ -59,7 +59,7 @@ class ShardedDataset(Dataset):
         shard = load_shard(self.shard_paths[shard_idx])
         example = shard[index % self.shard_size] 
         image, label = example[:3], example[3:]
-        return image, label
+        return torch.tensor(image), torch.tensor(label).squeeze().long()
 
 
 def build_model(model_name: str, pretrained_flag: bool, num_classes: int) -> nn.Module:
@@ -73,8 +73,8 @@ def build_model(model_name: str, pretrained_flag: bool, num_classes: int) -> nn.
     return model
 
 
-def criterion(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, Union[torch.Tensor, float]]:
-    total_loss: torch.Tensor = F.cross_entropy(predictions, targets)
+def criterion(predictions: torch.Tensor, targets: torch.Tensor, grad_steps: int) -> Dict[str, Union[torch.Tensor, float]]:
+    total_loss: torch.Tensor = F.cross_entropy(predictions, targets) / grad_steps
     return {'total_loss': total_loss}
 
 def load_dataset(dataset_path: str, shard_size: int) -> Tuple[Dataset, Dataset]:
@@ -267,11 +267,10 @@ def main():
               logits = outputs.masks_queries_logits
               logits = nn.functional.interpolate(logits, size=labels.shape[-2:], mode="bilinear", align_corners=False)
               logits = logits.squeeze(1)  # Remove extra dimension (B, 1, H, W) -> (B, H, W)
-              losses = criterion(logits, labels)
+              losses = criterion(logits, labels, config.get('grad_accumulation_steps', 1))
               loss = losses['total_loss']
             loss.backward()
             optimizer.step()
-            running_loss += loss.item()
             log_data = dict(train_loss=loss.item())
             logger.log(log_data, step)
 
