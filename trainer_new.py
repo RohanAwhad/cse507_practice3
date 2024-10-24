@@ -159,16 +159,16 @@ def evaluate(
                     class_dice[class_id] += dice_score
                     class_counts[class_id] += 1
 
-    mean_iou = {f'{label}_iou': class_iou[idx] / class_counts[idx] if class_counts[idx] > 0 else np.nan for label, idx in class_mapping.items() if label != 'background'}
-    mean_dice = {f'{label}_dice': class_dice[idx] / class_counts[idx] if class_counts[idx] > 0 else np.nan for label, idx in class_mapping.items() if label != 'background'}
+    mean_iou = {f'{label}': class_iou[idx] / class_counts[idx] if class_counts[idx] > 0 else np.nan for label, idx in class_mapping.items() if label != 'background'}
+    mean_dice = {f'{label}': class_dice[idx] / class_counts[idx] if class_counts[idx] > 0 else np.nan for label, idx in class_mapping.items() if label != 'background'}
+    mean_iou['mean'] = np.nanmean(list(mean_iou.values()))
+    mean_dice['mean'] = np.nanmean(list(mean_dice.values()))
 
     print({**mean_iou, **mean_dice})
 
     eval_metrics = {
-        **mean_iou,
-        **mean_dice,
-        "Mean IoU": np.nanmean(list(mean_iou.values())),
-        "Mean Dice Coefficient": np.nanmean(list(mean_dice.values()))
+        'IoU': mean_iou,
+        'Dice': mean_dice,
     }
     logger.log(eval_metrics, step)
 
