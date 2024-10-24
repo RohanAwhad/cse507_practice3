@@ -40,6 +40,30 @@ class WandbLogger(Logger):
     def log(self, data: dict, step: int):
         self.run.log(data, step=step)
 
+# ===
+# LR Scheduler
+# ===
+class CosineLRScheduler:
+  def __init__(self, warmup_steps, max_steps, max_lr, min_lr):
+    self.warmup_steps = warmup_steps
+    self.max_steps = max_steps
+    self.max_lr = max_lr
+    self.min_lr = min_lr
+
+  def get_lr(self, step):
+    # linear warmup
+    if step < self.warmup_steps:
+      return self.max_lr * (step+1) / self.warmup_steps
+
+    # constant lr
+    if step > self.max_steps:
+      return self.min_lr
+
+    # cosine annealing
+    decay_ratio = (step - self.warmup_steps) / (self.max_steps - self.warmup_steps)
+    assert 0 <= decay_ratio <= 1
+    coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
+    return self.min_lr + coeff * (self.max_lr - self.min_lr)
 
 # === Utility to load YAML configuration === #
 def load_config():
@@ -73,7 +97,7 @@ class ShardedDataset(Dataset):
         return torch.tensor(image), torch.tensor(label).squeeze().long()
 
 
-def build_model(model_name: str, pretrained_flag: bool, num_classes: int) -> nn.Module:
+def build_model(model_name: str, pretrained_flag: bool, num_classes: int, dropout: float = 0.0) -> nn.Module:
     """Load or initialize a model (placeholder)."""
     if pretrained_flag:
         model = Mask2FormerForUniversalSegmentation.from_pretrained(
@@ -82,6 +106,7 @@ def build_model(model_name: str, pretrained_flag: bool, num_classes: int) -> nn.
     else:
         config = Mask2FormerConfig.from_pretrained(model_name)
         config.num_labels = num_classes
+        config.dropout = dropout
         model = Mask2FormerForUniversalSegmentation(config)
     return model
 
@@ -235,7 +260,7 @@ def main():
     print(f"Using device: {device}")
     config = load_config()
     logger = WandbLogger(project_name=config.get("project_name", "default_project"), run_name=config["run_name"])
-    model = build_model(config["model_name"], config["pretrained_flag"], num_classes=len(config["class_mapping"]))
+    model = build_model(config["model_name"], config["pretrained_flag"], num_classes=len(config["class_mapping"]), dropout=config['dropout'])
     model = model.to(device)
     print("Model has been loaded on device")
     train_dataset, val_dataset = load_dataset(config["dataset_path"], config["shard_size"])
@@ -254,7 +279,8 @@ def main():
         prefetch_factor=config["prefetch_factor"],
     )
     print("DataLoaders created")
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config["lr"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config["min_lr"])
+    lr_scheduler = CosineLRScheduler(config['warmup_steps'], config['max_steps'], config['max_lr'], config['min_lr'])
     # Main training loop
     step = 0
     while step < config["num_steps"]:
@@ -279,8 +305,11 @@ def main():
                 losses = criterion(logits, labels, config.get("grad_accumulation_steps", 1))
                 loss = losses["total_loss"]
             loss.backward()
+
+            lr = lr_scheduler.get_lr(step)
+            for param_group in optimizer.param_groups: param_group['lr'] = lr
             optimizer.step()
-            log_data = dict(train_loss=loss.item())
+            log_data = dict(train_loss=loss.item(), lr=lr)
             logger.log(log_data, step)
 
             if step >= config["num_steps"]:
