@@ -32,7 +32,7 @@ def is_gpu_memory_gte_40_gb() -> bool | None:
   if torch.cuda.is_available():
     total_memory = torch.cuda.get_device_properties(0).total_memory
     total_memory_gb = total_memory / (1024 ** 3)  # Convert bytes to GB
-    print(f"Total GPU Memory: {gpu_memory:0.2f} GB")
+    print(f"Total GPU Memory: {total_memory_gb:0.2f} GB")
     return total_memory_gb > 40
 
 # === Logger Classes === #
