@@ -138,7 +138,7 @@ def criterion(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, Uni
     return {"total_loss": total_loss}
 
 
-def load_dataset(dataset_path: str, shard_size: int) -> Tuple[Dataset, Dataset]:
+def load_dataset(dataset_path: str, shard_size: int, n_val_shards: int) -> Tuple[Dataset, Dataset]:
     all_shards = glob.glob(f"{dataset_path}/*.npy")
     all_shards = sorted(
         map(lambda x: (x, int(os.path.basename(x).split(".")[0].split("_")[1])), all_shards), key=lambda x: x[1]
@@ -147,8 +147,8 @@ def load_dataset(dataset_path: str, shard_size: int) -> Tuple[Dataset, Dataset]:
     ]  # drop last shard
     random.shuffle(all_shards)
     all_shards = [x[0] for x in all_shards]
-    val_shards = all_shards[:1]
-    train_shards = all_shards[1:]
+    val_shards = all_shards[:n_val_shards]
+    train_shards = all_shards[n_val_shards:]
     train_dataset = ShardedDataset(shard_paths=train_shards, shard_size=shard_size)
     val_dataset = ShardedDataset(shard_paths=val_shards, shard_size=shard_size)
     return train_dataset, val_dataset
@@ -294,7 +294,7 @@ def main():
     )
     model = model.to(device)
     print("Model has been loaded on device")
-    train_dataset, val_dataset = load_dataset(config["dataset_path"], config["shard_size"])
+    train_dataset, val_dataset = load_dataset(config["dataset_path"], config["shard_size"], config.get('n_val_shards', 1))
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["batch_size"],
