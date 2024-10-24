@@ -86,6 +86,7 @@ def load_config():
     if is_gpu_memory_gte_40_gb():
         config['batch_size'] *= 2
         config['grad_accumulation_steps'] /= 2
+        config['num_steps'] /= 2
     return config
 
 
